@@ -1,0 +1,278 @@
+```
+title: "Project08"
+author: "Feng Chen"
+date: "`r Sys.Date()`"
+output: html_document
+```
+```{r}
+library(bit64)
+library(dplyr)
+library(DESeq2)
+library(AnnotationDbi)
+library(DEGreport)
+library(org.Hs.eg.db)
+library(cowplot)
+```
+
+```{r, warning = FALSE, message = FALSE, class.source = "fold-show"}
+file.copy(
+from = "../../../data/ReaganData/de_gsea_go/renv.lock",
+to = "./renv.lock",
+overwrite = TRUE
+)
+
+renv::restore()
+load("../../../data/ReaganData/de_gsea_go/project08/module08.RData")
+```
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+DE_bmat <- res_bmat_tb %>%
+filter(padj < 0.1 & abs(log2FoldChange) >= 1)
+
+DE_bmat$symbol <- mapIds(
+org.Hs.eg.db,
+keys     = DE_bmat$gene,
+column   = "SYMBOL",
+keytype  = "ENSEMBL",
+multiVals = "first"
+)
+
+DE_bmat$entrez <- mapIds(
+org.Hs.eg.db,
+keys     = DE_bmat$gene,
+column   = "ENTREZID",
+keytype  = "ENSEMBL",
+multiVals = "first"
+)
+
+write.csv(DE_bmat, "DE_BMAT.csv", row.names = TRUE)
+knitr::kable(head(DE_bmat))
+
+```
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+DE_mm <- res_mm_tb %>%
+filter(padj < 0.1 & abs(log2FoldChange) >= 1)
+
+DE_mm$symbol <- mapIds(
+org.Hs.eg.db,
+keys     = DE_mm$gene,
+column   = "SYMBOL",
+keytype  = "ENSEMBL",
+multiVals = "first"
+)
+
+DE_mm$entrez <- mapIds(
+org.Hs.eg.db,
+keys     = DE_mm$gene,
+column   = "ENTREZID",
+keytype  = "ENSEMBL",
+multiVals = "first"
+)
+
+write.csv(DE_mm, "DE_MM.csv", row.names = TRUE)
+knitr::kable(head(DE_mm))
+```
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+dds_bmat_deg <- dds_bmat
+
+rowData(dds_bmat_deg)$symbol <- mapIds(
+org.Hs.eg.db,
+keys     = rownames(dds_bmat_deg),
+column   = "SYMBOL",
+keytype  = "ENSEMBL",
+multiVals = "first"
+)
+
+rowData(dds_bmat_deg)$gene <- rownames(dds_bmat_deg)
+
+degPlot(
+dds   = dds_bmat_deg,
+res   = DE_bmat,
+n     = nrow(DE_bmat),
+genes = DE_bmat$gene,
+xs    = "co_cultured",
+group = "co_cultured",
+ann   = c("gene", "symbol"),
+batch = "replicate"
+)
+```
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+DE_mm_new <- DE_mm %>%
+group_by(symbol) %>%
+slice_min(padj, n = 1) %>%
+ungroup()
+
+dds_mm_deg <- dds_mm
+
+rowData(dds_mm_deg)$symbol <- mapIds(
+org.Hs.eg.db,
+keys     = rownames(dds_mm_deg),
+column   = "SYMBOL",
+keytype  = "ENSEMBL",
+multiVals = "first"
+)
+
+rowData(dds_mm_deg)$gene <- rownames(dds_mm_deg)
+
+degPlot(
+dds   = dds_mm_deg,
+res   = DE_mm_new,
+n     = nrow(DE_mm_new),
+genes = DE_mm_new$gene,
+xs    = "co_cultured",
+group = "co_cultured",
+ann   = c("gene", "symbol"),
+batch = "replicate"
+)
+```
+
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+res_bmat_degset <- degComps(
+dds      = dds_bmat,
+contrast = list("co_cultured_TRUE_vs_FALSE")
+)
+
+degMA(
+res_bmat_degset,
+raw  = TRUE,
+diff = 1
+)
+```
+
+```{r, message=FALSE, warning=FALSE, class.source = "fold-show", cache=TRUE}
+res_mm_degset <- degComps(
+dds      = dds_mm,
+contrast = list("co_cultured_TRUE_vs_FALSE")
+)
+
+degMA(
+res_mm_degset,
+raw  = TRUE,
+diff = 1
+)
+
+```
+
+```{r, message=FALSE, warning=FALSE, class.source = "fold-show", cache=TRUE}
+ma1 <- degMA(
+res_mm_degset,
+correlation = TRUE,
+diff = 1
+)
+
+ma2 <- degMA(
+res_mm_degset,
+diff = 1
+)
+
+plot_grid(ma2, ma1, align = "v", nrow = 2, ncol = 1)
+
+```
+
+```{r, message=FALSE, warning=FALSE, class.source = "fold-show", cache=TRUE}
+original_gene_list_bmat <- DE_bmat$log2FoldChange
+names(original_gene_list_bmat) <- DE_bmat$gene
+
+gene_list_bmat <- na.omit(original_gene_list_bmat)
+gene_list_bmat <- sort(gene_list_bmat, decreasing = TRUE)
+
+original_gene_list_mm <- DE_mm$log2FoldChange
+names(original_gene_list_mm) <- DE_mm$gene
+
+gene_list_mm <- na.omit(original_gene_list_mm)
+gene_list_mm <- sort(gene_list_mm, decreasing = TRUE)
+
+```
+
+```{r, class.source = "fold-show"}
+if (file.exists("gse_bmat_results.csv")) {
+gse_bmat_res <- read.csv("gse_bmat_results.csv")
+knitr::kable(head(gse_bmat_res))
+}
+
+if (file.exists("gse_mm_results.csv")) {
+gse_mm_res <- read.csv("gse_mm_results.csv")
+knitr::kable(head(gse_mm_res))
+}
+
+
+```
+
+```{r, class.source = "fold-show", message=FALSE, warning=FALSE, results='hide', cache=TRUE}
+if (file.exists("gse_bmat_do_results.csv")) {
+gse_bmat_do_res <- read.csv("gse_bmat_do_results.csv")
+knitr::kable(head(gse_bmat_do_res))
+}
+
+if (file.exists("gse_mm_do_results.csv")) {
+gse_mm_do_res <- read.csv("gse_mm_do_results.csv")
+knitr::kable(head(gse_mm_do_res))
+}
+
+if (file.exists("kk_bmat_results.csv")) {
+kk_bmat_res <- read.csv("kk_bmat_results.csv")
+knitr::kable(head(kk_bmat_res))
+}
+
+if (file.exists("kk_mm_results.csv")) {
+kk_mm_res <- read.csv("kk_mm_results.csv")
+knitr::kable(head(kk_mm_res))
+}
+
+
+```
+
+```{r, class.source = "fold-show", message=FALSE, warning=FALSE, results='hide', cache=TRUE}
+plots_to_show <- c("bmat_gsea_dotplot.png", "mm_gsea_dotplot.png")
+
+for (f in plots_to_show) {
+if (file.exists(f)) knitr::include_graphics(f)
+}
+
+```
+
+```{r stalling-block, message=FALSE, warning=FALSE, results='hide', cache=TRUE}
+emap_files <- c("bmat_gsea_emapplot.png", "mm_gsea_emapplot.png")
+
+for (f in emap_files) {
+if (file.exists(f)) knitr::include_graphics(f)
+}
+```
+
+```{r fig.width = 14, class.source = "fold-show"}
+ridge_files <- c("bmat_gsea_ridgeplot.png", "mm_gsea_ridgeplot.png")
+
+for (f in ridge_files) {
+if (file.exists(f)) knitr::include_graphics(f)
+}
+
+```
+
+```{r fig.width = 10 , warning=FALSE, class.source = "fold-show"}
+if (file.exists("mm_gsea_example_pathway.png")) {
+knitr::include_graphics("mm_gsea_example_pathway.png")
+}
+
+```
+
+
+```{r fig.height=20, fig.width=15, warning=FALSE, class.source = "fold-show"}
+kegg_plots <- c("bmat_kegg_dotplot.png", "mm_kegg_dotplot.png")
+
+for (f in kegg_plots) {
+if (file.exists(f)) knitr::include_graphics(f)
+}
+
+
+```
+
+
+```{r, class.source = "fold-show"}
+if (file.exists("hsa00430.pathview.png")) {
+knitr::include_graphics("hsa00430.pathview.png")
+}
+```
